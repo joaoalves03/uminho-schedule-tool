@@ -4,7 +4,7 @@ Scraper for Universidade do Minho schedule page.
 
 Should work for any course.
 
+Can be configured by modifying `config.yml`
+
 ## TODO:
-- Input for week
-- Export to JSON (and other formats)
-- Config file
+- Export to ICS
