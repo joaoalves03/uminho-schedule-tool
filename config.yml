@@ -4,7 +4,10 @@ scraper:
   year: 1
   week:
     start: "2025-09-15"
-    end: "2026-01-30"
+    end: "2025-10-01"
+  #classes:
+    #- "Sistemas e Arquiteturas de Computadores"
+    #- "Ferramentas de Computação de Elevado Desempenho"
 
 export:
   json:

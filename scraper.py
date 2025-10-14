@@ -25,9 +25,12 @@ class Scraper:
     form_id = None
 
     lessons: list[Lesson] = []
+    classes: list[str] = []
 
     def __init__(self, config: dict):
         weeks = self.get_weeks_between(config["week"]["start"], config["week"]["end"])
+        if "classes" in config.keys() and type(config["classes"]) is list:
+            self.classes = config["classes"]
 
         bar = Bar('Scraping schedule', max=len(weeks))
         bar.start()
@@ -80,9 +83,6 @@ class Scraper:
 
         bar.finish()
 
-
-
-
     def parse_schedule(self, raw_schedule_data: str):
         soup = BeautifulSoup(raw_schedule_data, features="lxml")
         table = soup.select_one(".rsContent > table:nth-child(1)")
@@ -90,6 +90,7 @@ class Scraper:
         days = [th.find("a").attrs["href"][1:] for th in table.select(".rsHorizontalHeaderTable th")]
         earliest_hour = self.parse_earliest_hour(table)
         n_time_slots = self.get_number_of_time_slots(table)
+
 
         for day_index, day in enumerate(days):
             time = earliest_hour
@@ -100,7 +101,9 @@ class Scraper:
 
                 # if slot contains anything at all
                 if schedule_slot.text.strip():
-                    self.lessons.append(self.parse_lesson(schedule_slot, time, day))
+                    # if class names specified in config, only keep classes specified
+                    if len(self.classes) == 0 or any(class_name in schedule_slot.text for class_name in self.classes):
+                        self.lessons.append(self.parse_lesson(schedule_slot, time, day))
 
                 time += timedelta(minutes=30)
 

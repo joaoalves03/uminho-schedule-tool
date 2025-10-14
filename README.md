@@ -6,5 +6,4 @@ Should work for any course.
 
 Can be configured by modifying `config.yml`
 
-## TODO:
-- Allow only a subset of classes to be scraped
+Using the [UV package manager](https://docs.astral.sh/uv/) is recommended
