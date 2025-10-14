@@ -1,0 +1,11 @@
+[project]
+name = "uminho-schedule-tool"
+version = "0.1.0"
+description = "Scrapes schedules from UMinho website and syncs them to any provided calendar service"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.14.2",
+    "lxml>=6.0.2",
+    "requests>=2.32.5",
+]
