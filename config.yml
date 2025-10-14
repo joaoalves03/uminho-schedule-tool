@@ -9,3 +9,6 @@ export:
   json:
     file_name: "out.json"
     indent: True
+
+  #ics:
+    #file_name: "out.ics"

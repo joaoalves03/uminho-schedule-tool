@@ -1,11 +1,13 @@
 import yaml
 from yaml import CLoader as Loader
 
-from modules.jsonexport import JsonExportModule
+from modules.ics_export import IcsExportModule
+from modules.json_export import JsonExportModule
 from scraper import Scraper
 
 available_modules = {
-    "json": JsonExportModule
+    "json": JsonExportModule,
+    "ics": IcsExportModule
 }
 
 def main():
