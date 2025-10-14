@@ -8,3 +8,4 @@ Can be configured by modifying `config.yml`
 
 ## TODO:
 - Export to ICS
+- Specify a range of weeks to export
