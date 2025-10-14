@@ -2,6 +2,7 @@ import math
 import re
 from datetime import datetime, timedelta
 from time import sleep
+from progress.bar import Bar
 
 import bs4
 import requests
@@ -26,7 +27,10 @@ class Scraper:
     lessons: list[Lesson] = []
 
     def __init__(self, config: dict):
-        print("Scraping schedule...")
+        weeks = self.get_weeks_between(config["week"]["start"], config["week"]["end"])
+
+        bar = Bar('Scraping schedule', max=len(weeks))
+        bar.start()
 
         self.course_name = config["course_name"]
         self.year = str(config["year"])
@@ -49,9 +53,7 @@ class Scraper:
 
         soup = BeautifulSoup(res.text, features="lxml")
 
-        weeks = self.get_weeks_between(config["week"]["start"], config["week"]["end"])
-
-        for week in weeks:
+        for i, week in enumerate(weeks):
             state = f'{{"enabled":true,"emptyMessage":"","validationText":"{week}-00-00-00","valueAsString":"{week}-00-00-00","minDateStr":"2025-09-15-00-00-00","maxDateStr":"2026-06-21-00-00-00","lastSetTextBoxValue":"20-10-2025"}}'
 
             res = requests.post(SCHEDULE_URL, headers={
@@ -67,11 +69,16 @@ class Scraper:
                 # But this field requires the date in DD-MM-YYYY for some reason
                 f"{self.form_id}dataWeekSelect$dateInput": "-".join(reversed(week.split("-"))),
                 f"{self.form_id}chkMostraExpandido": "on",
-                f"ctl00_ctl40_g_e84a3962_8ce0_47bf_a5c3_d5f9dd3927ef_ctl00_dataWeekSelect_dateInput_ClientState": state
+                f"{self.form_id.replace('$', '_')}dataWeekSelect_dateInput_ClientState": state
             })
 
             self.parse_schedule(res.text)
-            sleep(config["timeout"])
+            bar.next()
+
+            if i != len(weeks) - 1:
+                sleep(config["timeout"])
+
+        bar.finish()
 
 
 
