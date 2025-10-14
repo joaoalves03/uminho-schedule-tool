@@ -1,6 +1,7 @@
 import math
 import re
 from datetime import datetime, timedelta
+from time import sleep
 
 import bs4
 import requests
@@ -48,20 +49,30 @@ class Scraper:
 
         soup = BeautifulSoup(res.text, features="lxml")
 
-        res = requests.post(SCHEDULE_URL, headers={
-            "Content-Type": "application/x-www-form-urlencoded",
-            # Note: Must fake user agent, or else the website will not render the schedule correctly
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0"
-        }, data={
-            **self.parse_hidden_inputs(soup),
-            "__EVENTTARGET": f"{self.form_id}chkMostraExpandido",
-            f"{self.form_id}dataCurso": self.course_name,
-            f"{self.form_id}dataAnoCurricular": self.year,
-            f"{self.form_id}dataWeekSelect": "2025-10-14",
-            f"{self.form_id}chkMostraExpandido": "on"
-        })
+        weeks = self.get_weeks_between(config["week"]["start"], config["week"]["end"])
 
-        self.parse_schedule(res.text)
+        for week in weeks:
+            state = f'{{"enabled":true,"emptyMessage":"","validationText":"{week}-00-00-00","valueAsString":"{week}-00-00-00","minDateStr":"2025-09-15-00-00-00","maxDateStr":"2026-06-21-00-00-00","lastSetTextBoxValue":"20-10-2025"}}'
+
+            res = requests.post(SCHEDULE_URL, headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                # Note: Must fake user agent, or else the website will not render the schedule correctly
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0"
+            }, data={
+                **self.parse_hidden_inputs(soup),
+                f"{self.form_id}dataCurso": self.course_name,
+                f"{self.form_id}dataAnoCurricular": self.year,
+                # This field requires the date in YYYY-MM-DD
+                f"{self.form_id}dataWeekSelect": week,
+                # But this field requires the date in DD-MM-YYYY for some reason
+                f"{self.form_id}dataWeekSelect$dateInput": "-".join(reversed(week.split("-"))),
+                f"{self.form_id}chkMostraExpandido": "on",
+                f"ctl00_ctl40_g_e84a3962_8ce0_47bf_a5c3_d5f9dd3927ef_ctl00_dataWeekSelect_dateInput_ClientState": state
+            })
+
+            self.parse_schedule(res.text)
+            sleep(config["timeout"])
+
 
 
 
@@ -150,3 +161,19 @@ class Scraper:
         new_lesson.shift = metadata.contents[3].get_text(strip=True)
 
         return new_lesson
+
+    @staticmethod
+    def get_weeks_between(start_date: str, end_date: str):
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        days_since_monday = start.weekday()
+        first_monday = start - timedelta(days=days_since_monday)
+
+        mondays = []
+        current = first_monday
+        while current <= end:
+            mondays.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(weeks=1)
+
+        return mondays
