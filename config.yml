@@ -1,5 +1,6 @@
 scraper:
   course_name: "Mestrado em Computação Avançada"
+  year: 1
   week:
     start: "2025-09-15"
     end: "2025-10-17"

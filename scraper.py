@@ -19,6 +19,7 @@ TIME_SLOT_SIZE_PX = 60
 # Powered by hopes and dreams
 class Scraper:
     course_name = None
+    year = ""
     form_id = None
 
     lessons: list[Lesson] = []
@@ -27,6 +28,7 @@ class Scraper:
         print("Scraping schedule...")
 
         self.course_name = config["course_name"]
+        self.year = str(config["year"])
 
         res = requests.get(SCHEDULE_URL)
         soup = BeautifulSoup(res.text, features="lxml")
@@ -54,7 +56,7 @@ class Scraper:
             **self.parse_hidden_inputs(soup),
             "__EVENTTARGET": f"{self.form_id}chkMostraExpandido",
             f"{self.form_id}dataCurso": self.course_name,
-            f"{self.form_id}dataAnoCurricular": "1",
+            f"{self.form_id}dataAnoCurricular": self.year,
             f"{self.form_id}dataWeekSelect": "2025-10-14",
             f"{self.form_id}chkMostraExpandido": "on"
         })
