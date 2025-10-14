@@ -23,8 +23,10 @@ class Scraper:
 
     lessons: list[Lesson] = []
 
-    def __init__(self, course_name: str):
-        self.course_name = course_name
+    def __init__(self, config: dict):
+        print("Scraping schedule...")
+
+        self.course_name = config["course_name"]
 
         res = requests.get(SCHEDULE_URL)
         soup = BeautifulSoup(res.text, features="lxml")
@@ -35,7 +37,7 @@ class Scraper:
         }, data={
             **self.parse_hidden_inputs(soup),
             f"{self.form_id}dataCurso": self.course_name,
-            f"{self.get_client_state_input_name(soup)}": STATE(self.course_name, self.get_course_id(soup, course_name))
+            f"{self.get_client_state_input_name(soup)}": STATE(self.course_name, self.get_course_id(soup, self.course_name))
         })
 
         if "Mostrar horário expandido" not in res.text:
@@ -58,8 +60,6 @@ class Scraper:
         })
 
         self.parse_schedule(res.text)
-        for lesson in self.lessons:
-            print(lesson)
 
 
 
