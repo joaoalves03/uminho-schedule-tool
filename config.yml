@@ -15,4 +15,5 @@ export:
     indent: True
 
   #ics:
-  #  file_name: "out.ics"
+  #  file_name: "./export/out.ics"
+  #  override_file: "./export/out.ics"
