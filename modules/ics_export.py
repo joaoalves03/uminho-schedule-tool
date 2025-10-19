@@ -20,27 +20,56 @@ class IcsExportModule(BaseExportModule):
         self.file_name = config["file_name"]
         self.override_file = config["override_file"]
 
+    @staticmethod
+    def lesson_key(l: Lesson):
+        return (
+            l.name,
+            l.shift,
+            l.location,
+            l.start.astimezone(timezone.utc),
+            l.end.astimezone(timezone.utc),
+        )
+
     def export(self, lessons: list[Lesson]):
         print("Exporting to ICS...")
 
         if self.override_file:
             with open(self.override_file) as f:
                 calendar = ics.Calendar(f.read())
-                days = list(set(map(lambda l: l.start.strftime('%Y-%m-%d'), lessons)))
-                calendar.events = set([e for e in calendar.events if str(e.begin).split("T")[0] not in days])
         else:
             calendar = ics.Calendar()
 
-        for lesson in lessons:
+        new_lessons = {self.lesson_key(l): l for l in lessons}
+
+        existing_events = {
+            (
+                e.name,
+                e.description,
+                e.location,
+                e.begin.astimezone(timezone.utc),
+                e.end.astimezone(timezone.utc),
+            ): e
+            for e in calendar.events
+        }
+
+        keep_keys = set(existing_events.keys()) & set(new_lessons.keys())
+        add_keys = set(new_lessons.keys()) - set(existing_events.keys())
+
+        updated_events = {k: existing_events[k] for k in keep_keys}
+
+        for k in add_keys:
+            l = new_lessons[k]
             event = ics.Event(
-                name=lesson.name,
-                description=lesson.shift,
-                location=lesson.location,
-                begin=lesson.start.astimezone(timezone.utc),
-                end=lesson.end.astimezone(timezone.utc)
+                name=l.name,
+                description=l.shift,
+                location=l.location,
+                begin=l.start.astimezone(timezone.utc),
+                end=l.end.astimezone(timezone.utc),
             )
+            updated_events[k] = event
 
-            calendar.events.add(event)
+        calendar.events = set(updated_events.values())
 
-        with open(self.override_file if self.override_file else self.file_name, "w") as f:
+        output_file = self.override_file if self.override_file else self.file_name
+        with open(output_file, "w") as f:
             f.writelines(calendar.serialize_iter())
