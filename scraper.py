@@ -96,14 +96,15 @@ class Scraper:
             time = earliest_hour
 
             for time_slot in range(1, n_time_slots + 1):
-                schedule_slot = table.select_one(
-                    f".rsContentTable > tr:nth-child({time_slot}) > td:nth-child({day_index + 1})")
+                schedule_slots = table.select(
+                    f".rsContentTable > tr:nth-child({time_slot}) > td:nth-child({day_index + 1}) > .rsWrap > div")
 
-                # if slot contains anything at all
-                if schedule_slot.text.strip():
-                    # if class names specified in config, only keep classes specified
-                    if len(self.classes) == 0 or any(class_name in schedule_slot.text for class_name in self.classes):
-                        self.lessons.append(self.parse_lesson(schedule_slot, time, day))
+                for schedule_slot in schedule_slots:
+                    # if slot contains anything at all
+                    if schedule_slot.text.strip():
+                        # if class names specified in config, only keep classes specified
+                        if len(self.classes) == 0 or any(class_name in schedule_slot.text for class_name in self.classes):
+                            self.lessons.append(self.parse_lesson(schedule_slot, time, day))
 
                 time += timedelta(minutes=30)
 
@@ -150,13 +151,12 @@ class Scraper:
     @staticmethod
     def parse_lesson(slot: bs4.Tag, start: datetime, date: str) -> Lesson:
         new_lesson = Lesson()
-        main = slot.select_one(".rsWrap > .rsApt")
 
         new_lesson_date = datetime.strptime(date, "%Y-%m-%d").date()
         new_lesson.start = start.replace(year=new_lesson_date.year, month=new_lesson_date.month,
                                          day=new_lesson_date.day)
 
-        match = re.search(r'height:\s*([\d.]+)(px|%)?', main.get("style"))
+        match = re.search(r'height:\s*([\d.]+)(px|%)?', slot.get("style"))
         if match:
             height_value = int(match.group(1))
             time = math.ceil(height_value / TIME_SLOT_SIZE_PX)
@@ -165,7 +165,7 @@ class Scraper:
 
         new_lesson.end = new_lesson.start + timedelta(minutes=time * 30)
 
-        metadata = main.select_one(".rsAptOut > .rsAptMid > .rsAptIn > .rsAptContent")
+        metadata = slot.select_one(".rsAptOut > .rsAptMid > .rsAptIn > .rsAptContent")
         new_lesson.name = metadata.contents[0].get_text(strip=True)
         new_lesson.location = metadata.find('span').get_text(strip=True).strip('[]')
         new_lesson.shift = metadata.contents[3].get_text(strip=True)
