@@ -1,12 +1,16 @@
+import json
 import math
+import random
 import re
+import string
+import sys
 from datetime import datetime, timedelta
 from time import sleep
-from progress.bar import Bar
 
 import bs4
 import requests
 from bs4 import BeautifulSoup
+from progress.bar import Bar
 
 from lesson import Lesson
 
@@ -18,21 +22,40 @@ STATE = lambda course, course_id: (
 TIME_SLOT_SIZE_PX = 60
 
 
+def parseAndUpdateState(state, body):
+    soup = BeautifulSoup(body, "lxml")
+
+    for script in soup.find_all("script"):
+        content = script.get_text()
+        if "RadDatePicker" not in content:
+            continue
+
+        max_match = re.search(r'"maxDate":"([^"]+)"', content)
+        min_match = re.search(r'"minDate":"([^"]+)"', content)
+        if max_match and min_match:
+            return max_match.group(1), min_match.group(1)
+
+    raise LookupError("Could not find maxDate and minDate in the provided HTML.")
+
+
 # Powered by hopes and dreams
 class Scraper:
     course_name = None
     year = ""
     form_id = None
 
-    lessons: list[Lesson] = []
-    classes: list[str] = []
+    lessons: list[Lesson]
+    classes: list[str]
 
     def __init__(self, config: dict):
+        self.lessons = []
+        self.classes = []
+
         weeks = self.get_weeks_between(config["week"]["start"], config["week"]["end"])
-        if "classes" in config.keys() and type(config["classes"]) is list:
+        if "classes" in config and type(config["classes"]) is list:
             self.classes = config["classes"]
 
-        bar = Bar('Scraping schedule', max=len(weeks))
+        bar = Bar("Scraping schedule", max=len(weeks))
         bar.start()
 
         self.course_name = config["course_name"]
@@ -42,40 +65,62 @@ class Scraper:
         soup = BeautifulSoup(res.text, features="lxml")
         self.form_id = self.get_form_id(soup)
 
-        res = requests.post(SCHEDULE_URL, headers={
-            "Content-Type": "application/x-www-form-urlencoded"
-        }, data={
-            **self.parse_hidden_inputs(soup),
-            f"{self.form_id}dataCurso": self.course_name,
-            f"{self.get_client_state_input_name(soup)}": STATE(self.course_name, self.get_course_id(soup, self.course_name))
-        })
+        res = requests.post(
+            SCHEDULE_URL,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={
+                **self.parse_hidden_inputs(soup),
+                f"{self.form_id}dataCurso": self.course_name,
+                f"{self.get_client_state_input_name(soup)}": STATE(
+                    self.course_name, self.get_course_id(soup, self.course_name)
+                ),
+            },
+        )
 
         if "Mostrar horário expandido" not in res.text:
             print("Couldn't get course data. Stopping...")
-            exit(-1)
+            sys.exit(-1)
 
         soup = BeautifulSoup(res.text, features="lxml")
 
         for i, week in enumerate(weeks):
-            state = f'{{"enabled":true,"emptyMessage":"","validationText":"{week}-00-00-00","valueAsString":"{week}-00-00-00","minDateStr":"2025-09-15-00-00-00","maxDateStr":"2026-06-21-00-00-00","lastSetTextBoxValue":"20-10-2025"}}'
+            state = {
+                "enabled": True,
+                "emptyMessage": "",
+                "validationText": f"{week}-00-00-00",
+                "valueAsString": f"{week}-00-00-00",
+                "minDateStr": "2026-09-14-00-00-00",
+                "maxDateStr": "2027-06-20-00-00-00",
+                "lastSetTextBoxValue": "20-10-2025",
+            }
 
-            res = requests.post(SCHEDULE_URL, headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                # Note: Must fake user agent, or else the website will not render the schedule correctly
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0"
-            }, data={
-                **self.parse_hidden_inputs(soup),
-                f"{self.form_id}dataCurso": self.course_name,
-                f"{self.form_id}dataAnoCurricular": self.year,
-                # This field requires the date in YYYY-MM-DD
-                f"{self.form_id}dataWeekSelect": week,
-                # But this field requires the date in DD-MM-YYYY for some reason
-                f"{self.form_id}dataWeekSelect$dateInput": "-".join(reversed(week.split("-"))),
-                f"{self.form_id}chkMostraExpandido": "on",
-                f"{self.form_id.replace('$', '_')}dataWeekSelect_dateInput_ClientState": state
-            })
+            res = requests.post(
+                SCHEDULE_URL,
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    # Note: Must fake user agent, or else the website will not render the schedule correctly
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0",
+                },
+                data={
+                    **self.parse_hidden_inputs(soup),
+                    f"{self.form_id}dataCurso": self.course_name,
+                    f"{self.form_id}dataAnoCurricular": self.year,
+                    # This field requires the date in YYYY-MM-DD
+                    f"{self.form_id}dataWeekSelect": week,
+                    # But this field requires the date in DD-MM-YYYY for some reason
+                    f"{self.form_id}dataWeekSelect$dateInput": "-".join(
+                        reversed(week.split("-"))
+                    ),
+                    f"{self.form_id}chkMostraExpandido": "on",
+                    f"{self.form_id.replace('$', '_')}dataWeekSelect_dateInput_ClientState": json.dumps(
+                        state
+                    ),
+                },
+            )
 
             self.parse_schedule(res.text)
+            state = parseAndUpdateState(state, res.text)
+
             bar.next()
 
             if i != len(weeks) - 1:
@@ -87,24 +132,31 @@ class Scraper:
         soup = BeautifulSoup(raw_schedule_data, features="lxml")
         table = soup.select_one(".rsContent > table:nth-child(1)")
 
-        days = [th.find("a").attrs["href"][1:] for th in table.select(".rsHorizontalHeaderTable th")]
+        days = [
+            th.find("a").attrs["href"][1:]
+            for th in table.select(".rsHorizontalHeaderTable th")
+        ]
         earliest_hour = self.parse_earliest_hour(table)
         n_time_slots = self.get_number_of_time_slots(table)
-
 
         for day_index, day in enumerate(days):
             time = earliest_hour
 
             for time_slot in range(1, n_time_slots + 1):
                 schedule_slots = table.select(
-                    f".rsContentTable > tr:nth-child({time_slot}) > td:nth-child({day_index + 1}) > .rsWrap > div")
+                    f".rsContentTable > tr:nth-child({time_slot}) > td:nth-child({day_index + 1}) > .rsWrap > div"
+                )
 
                 for schedule_slot in schedule_slots:
-                    # if slot contains anything at all
-                    if schedule_slot.text.strip():
-                        # if class names specified in config, only keep classes specified
-                        if len(self.classes) == 0 or any(class_name in schedule_slot.text for class_name in self.classes):
-                            self.lessons.append(self.parse_lesson(schedule_slot, time, day))
+                    # if slot contains anything at all and if class names specified in config, only keep classes specified
+                    if schedule_slot.text.strip() and (
+                        len(self.classes) == 0
+                        or any(
+                            class_name in schedule_slot.text
+                            for class_name in self.classes
+                        )
+                    ):
+                        self.lessons.append(self.parse_lesson(schedule_slot, time, day))
 
                 time += timedelta(minutes=30)
 
@@ -120,7 +172,7 @@ class Scraper:
         names = [li.get_text(strip=True) for li in soup.select("li.rcbItem")]
 
         text = soup.decode()
-        match = re.search(r'"itemData"\s*:\s*\[(.*?)]', text, flags=re.S)
+        match = re.search(r'"itemData"\s*:\s*\[(.*?)]', text, flags=re.DOTALL)
         if not match:
             return None
 
@@ -141,8 +193,12 @@ class Scraper:
 
     @staticmethod
     def parse_earliest_hour(table: BeautifulSoup) -> datetime:
-        return datetime.strptime(table.select_one(
-            ".rsVerticalHeaderTable > tr:nth-child(1) > th:nth-child(1) > div:nth-child(1)").text.strip(), "%H:%M")
+        return datetime.strptime(
+            table.select_one(
+                ".rsVerticalHeaderTable > tr:nth-child(1) > th:nth-child(1) > div:nth-child(1)"
+            ).text.strip(),
+            "%H:%M",
+        )
 
     @staticmethod
     def get_number_of_time_slots(table: BeautifulSoup) -> int:
@@ -153,10 +209,13 @@ class Scraper:
         new_lesson = Lesson()
 
         new_lesson_date = datetime.strptime(date, "%Y-%m-%d").date()
-        new_lesson.start = start.replace(year=new_lesson_date.year, month=new_lesson_date.month,
-                                         day=new_lesson_date.day)
+        new_lesson.start = start.replace(
+            year=new_lesson_date.year,
+            month=new_lesson_date.month,
+            day=new_lesson_date.day,
+        )
 
-        match = re.search(r'height:\s*([\d.]+)(px|%)?', slot.get("style"))
+        match = re.search(r"height:\s*([\d.]+)(px|%)?", slot.get("style"))
         if match:
             height_value = int(match.group(1))
             time = math.ceil(height_value / TIME_SLOT_SIZE_PX)
@@ -167,7 +226,7 @@ class Scraper:
 
         metadata = slot.select_one(".rsAptOut > .rsAptMid > .rsAptIn > .rsAptContent")
         new_lesson.name = metadata.contents[0].get_text(strip=True)
-        new_lesson.location = metadata.find('span').get_text(strip=True).strip('[]')
+        new_lesson.location = metadata.find("span").get_text(strip=True).strip("[]")
         new_lesson.shift = metadata.contents[3].get_text(strip=True)
 
         return new_lesson
